@@ -1,0 +1,296 @@
+﻿<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TODOリスト</title>
+  <style>
+    :root {
+      --bg: #f4f7fb;
+      --card: #ffffff;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --accent: #0ea5e9;
+      --accent-dark: #0284c7;
+      --danger: #ef4444;
+      --border: #e5e7eb;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", sans-serif;
+      background: linear-gradient(135deg, #e6f6ff, #f8fbff 40%, #eef2ff);
+      color: var(--text);
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+    }
+
+    .app {
+      width: min(680px, 100%);
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+      padding: 20px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    h1 {
+      margin: 0 0 16px;
+      font-size: 1.6rem;
+    }
+
+    form {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    input[type="text"] {
+      padding: 12px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      font-size: 1rem;
+    }
+
+    button {
+      border: none;
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-size: 0.95rem;
+      cursor: pointer;
+    }
+
+    .add-btn {
+      background: var(--accent);
+      color: white;
+      font-weight: 600;
+    }
+
+    .add-btn:hover { background: var(--accent-dark); }
+
+    .toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin: 10px 0 14px;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .clear-btn {
+      background: transparent;
+      color: var(--danger);
+      border: 1px solid #fecaca;
+    }
+
+    ul {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: grid;
+      gap: 8px;
+    }
+
+    li {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: #fff;
+    }
+
+    li.done .text {
+      text-decoration: line-through;
+      color: var(--muted);
+    }
+
+    .delete-btn {
+      background: #fef2f2;
+      color: #b91c1c;
+      border: 1px solid #fee2e2;
+      padding: 6px 10px;
+      border-radius: 8px;
+    }
+
+    .empty {
+      text-align: center;
+      color: var(--muted);
+      padding: 16px;
+      border: 1px dashed var(--border);
+      border-radius: 10px;
+      background: #fbfdff;
+    }
+
+    .praise {
+      position: absolute;
+      top: 14px;
+      right: 14px;
+      background: linear-gradient(135deg, #22c55e, #16a34a);
+      color: #fff;
+      padding: 10px 14px;
+      border-radius: 999px;
+      font-weight: 700;
+      font-size: 0.9rem;
+      box-shadow: 0 8px 20px rgba(22, 163, 74, 0.28);
+      opacity: 0;
+      transform: translateY(-8px) scale(0.95);
+      pointer-events: none;
+    }
+
+    .praise.show {
+      animation: praise-pop 1.4s ease forwards;
+    }
+
+    @keyframes praise-pop {
+      0% { opacity: 0; transform: translateY(-8px) scale(0.95); }
+      20% { opacity: 1; transform: translateY(0) scale(1); }
+      75% { opacity: 1; transform: translateY(0) scale(1); }
+      100% { opacity: 0; transform: translateY(-6px) scale(0.98); }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <h1>TODOリスト</h1>
+
+    <form id="todo-form">
+      <input id="todo-input" type="text" placeholder="やることを入力" autocomplete="off" />
+      <button class="add-btn" type="submit">追加</button>
+    </form>
+
+    <div class="toolbar">
+      <span id="count">0件</span>
+      <button id="clear-done" class="clear-btn" type="button">完了を削除</button>
+    </div>
+
+    <ul id="todo-list"></ul>
+    <p id="empty" class="empty">TODOはまだありません。</p>
+    <p id="praise" class="praise" aria-live="polite"></p>
+  </main>
+
+  <script>
+    const form = document.getElementById("todo-form");
+    const input = document.getElementById("todo-input");
+    const listEl = document.getElementById("todo-list");
+    const countEl = document.getElementById("count");
+    const emptyEl = document.getElementById("empty");
+    const clearDoneBtn = document.getElementById("clear-done");
+    const praiseEl = document.getElementById("praise");
+
+    const STORAGE_KEY = "simple_todos_v1";
+    const PRAISE_MESSAGES = [
+      "ナイス完了!",
+      "その調子!",
+      "よくできました!",
+      "着実に進んでる!",
+      "最高! 1つ片付いた!"
+    ];
+
+    let todos = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+    let praiseTimer = null;
+
+    function save() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(todos));
+    }
+
+    function showPraise() {
+      const message = PRAISE_MESSAGES[Math.floor(Math.random() * PRAISE_MESSAGES.length)];
+      praiseEl.textContent = message;
+      praiseEl.classList.remove("show");
+      void praiseEl.offsetWidth;
+      praiseEl.classList.add("show");
+
+      if (praiseTimer) {
+        clearTimeout(praiseTimer);
+      }
+      praiseTimer = setTimeout(() => {
+        praiseEl.classList.remove("show");
+      }, 1400);
+    }
+
+    function render() {
+      listEl.innerHTML = "";
+
+      if (todos.length === 0) {
+        emptyEl.hidden = false;
+      } else {
+        emptyEl.hidden = true;
+      }
+
+      todos.forEach((todo) => {
+        const li = document.createElement("li");
+        li.className = todo.done ? "done" : "";
+
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.checked = todo.done;
+        checkbox.addEventListener("change", () => {
+          const wasDone = todo.done;
+          todo.done = checkbox.checked;
+          save();
+          render();
+
+          if (!wasDone && todo.done) {
+            showPraise();
+          }
+        });
+
+        const text = document.createElement("span");
+        text.className = "text";
+        text.textContent = todo.text;
+
+        const del = document.createElement("button");
+        del.className = "delete-btn";
+        del.type = "button";
+        del.textContent = "削除";
+        del.addEventListener("click", () => {
+          todos = todos.filter((t) => t.id !== todo.id);
+          save();
+          render();
+        });
+
+        li.append(checkbox, text, del);
+        listEl.append(li);
+      });
+
+      const remain = todos.filter((t) => !t.done).length;
+      countEl.textContent = `未完了 ${remain}件 / 全${todos.length}件`;
+    }
+
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const value = input.value.trim();
+      if (!value) return;
+
+      todos.unshift({
+        id: Date.now(),
+        text: value,
+        done: false
+      });
+
+      input.value = "";
+      save();
+      render();
+      input.focus();
+    });
+
+    clearDoneBtn.addEventListener("click", () => {
+      todos = todos.filter((t) => !t.done);
+      save();
+      render();
+    });
+
+    render();
+  </script>
+</body>
+</html>
